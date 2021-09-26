@@ -1,0 +1,979 @@
+---
+title: "Etude appronfondie du QCM de Culture Générale"
+author: "Lucas Chaveneau, Thibalut Fuchez, Pierre-Emmanuel Diot"
+date: "13/12/2019"
+output:
+  pdf_document:
+    toc: yes
+    number_section: yes
+    keep_tex: yes
+    dev: png
+    df_print: kable
+  html_document:
+    toc: yes
+    toc_float: yes
+    df_print: paged
+    dev: png
+    number_section: false
+    theme: flatly
+    highlight: "pygments"
+---
+
+```{r setup, echo = FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, fig.height = 4, fig.width = 5, sanitize = TRUE)
+```
+
+
+```{r packages}
+library(knitr)# pour kable
+library(kableExtra)# pour kable_styling et add_header_above
+library(dplyr)# pour select, mutate, mutate_each
+library(ggplot2) # pour des graphiques évolués
+library(ggpubr)# pour mettre de graphiques ggplot côte à côte
+library(ggridges)
+```
+
+```{r theme set}
+theme_set(theme_minimal())
+```
+
+
+```{r mise en forme tableaux et graphiques}
+if (knitr::is_latex_output()) {
+  kable_1 <- function(tab, transp = FALSE, digits =2, titre=NULL, font_size = NULL,...){
+      if( transp ){
+        tab %>% t() %>% kable(caption=titre, digits = digits, booktabs=TRUE,...) %>%
+          kable_styling(full_width = F, position = "center", 
+                         latex_options = c("striped", "condensed", "hold_position"),
+                         font_size =  font_size)
+      } else {
+        tab %>% kable(caption=titre, digits = digits, booktabs=TRUE,...) %>%
+          kable_styling( full_width = F, position = "center",
+                         latex_options = c("striped", "condensed", "hold_position"),
+                         font_size = font_size)
+      }
+    }
+  } else {
+  kable_1<-function(tab, transp = FALSE, digits = 2, titre=NULL, font_size = NULL, ...){
+      if(transp){
+        tab %>% t() %>% kable(caption=titre, digits = digits,...) %>%
+          kable_styling(full_width = F, position = "center",
+                        bootstrap_options = c("striped", "condensed"))  
+      } else {
+        tab %>% kable(caption=titre, digits = digits, ...) %>%
+          kable_styling(full_width = F, position = "center",
+                        bootstrap_options = c("striped", "condensed"))
+      }
+    }
+  }
+```
+
+
+```{r affichage des bases de données}
+if (knitr::is_latex_output()) {
+  df.aff<-function(df,nrow=10,var=1:5,titre=NULL){
+    n<-min(nrow,nrow(df))
+    kable_1(head(df[,var],n),titre=titre)
+    }
+  } else {
+  df.aff<-function(df,nrow=10,var=1:5,titre=NULL){
+    df
+    }
+  }
+```
+
+```{r tikz-sanitize}
+options(
+tikzSanitizeCharacters = c('%','}','{','^','_','&','~',"é","É","è","È","à","À"),
+tikzReplacementCharacters = c('\\%','\\}','\\{','\\^{}','\\_{}',
+'\\&','\\char`\\~',"\\'e","\\'E","\\`e","\\`E","\\`a","\\`A")
+)
+```
+
+
+# Introduction
+
+
+Notre étude se base sur les résultats des élèves de la licence d'Economie à un questionnaire de Culture Générale. Une fois que nous nous sommes familiarisés avec les différentes bases de données, nous avons choisi d'étudier l'éternelle dichotomie entre les élèves venant de Bac ES et les élèves venant de Bac S. 
+
+Plus précisément, nous tenterons de répondre aux **deux questions** suivantes :
+
+ - Y a-t-il une différence de niveau entre S et ES lors de l'entrée à la fac ?
+ - S'il y a une différence, la licence d'Economie permet-elle une harmonisation des niveaux des S et des ES ?
+
+Voici **3 hypothèses** que nous avons faites avant de commencer notre étude :
+
+ - En L1 les S obtiennent de meilleurs résultats à la partie Mathématiques du QCM de Culture Générale
+ - En L1 les ES obtiennent de meilleurs résultats en Histoire et en Economie
+ - En L3 il n'y a plus de différence significative dans les résultats obtenus par les anciens S et ES 
+
+
+Nous avons choisi de ne considérer que l'**Histoire**, l'**Economie** et les **Maths** pour les raisons suivantes :
+
+ - Les S ont une formation plus poussée en Maths et les ES dans les deux autres matières 
+ - Ce sont des matières essentielles à la réussite en Licence d'Economie 
+
+
+## Les bases de données
+
+```{r}
+reponses_brutes <- read.table("Reponses_Brutes.csv",header=TRUE, sep=";",
+                              encoding = "UTF-8")
+data_bin <- read.table("Reponses_Binaires.csv",header=TRUE, sep=",",
+                       encoding = "UTF-8")
+```
+
+```{r Isolation des données Bac et Annee}
+reponses_brutes <- reponses_brutes[,c("bac", "annee")]
+```
+
+
+```{r Affectation des points}
+data_points <- data_bin %>% 
+  mutate_each(
+    ends_with("4"),ends_with("5"),ends_with("6"),ends_with("7"),
+    fun = function(x){2*x} ) %>%
+  mutate_each(
+    ends_with("8"),ends_with("9"),ends_with("10"),
+    fun = function(x){3*x} )
+```
+
+
+```{r}
+data_prelim <- cbind(data_points, reponses_brutes)
+```
+
+
+```{r Calcul des scores dans les matières étudiées}
+score <- data_prelim %>% mutate(
+            hist_note = data_points %>% select(starts_with("hist")) %>% rowSums(),
+            eco_note = data_points %>% select(starts_with("eco")) %>% rowSums(),
+            mat_note = data_points %>% select(starts_with("mat")) %>% rowSums()
+            )
+```
+
+
+```{r Création de la base de données qui nous intéresse}
+data <- score[,c("bac","annee","hist_note","eco_note","mat_note")]
+colnames(data) <- c("Bac", "Annee", "Histoire", "Economie", "Maths")
+```
+
+```{r}
+data$Bac <- ordered(data$Bac, levels=c("Bac ES","Bac S","Bac L","Bac STMG","Bac professionnel"))
+levels(data$Bac) <- c("Bac ES", "Bac S","Autres","Autres","Autres")
+```
+
+
+````{r  Bases de données sans pondération des points associés aux questions}
+score2 <- cbind(data_bin, reponses_brutes) %>% mutate(
+            hist_note = data_bin %>% select(starts_with("hist")) %>% rowSums(),
+            eco_note = data_bin %>% select(starts_with("eco")) %>% rowSums(),
+            mat_note = data_bin %>% select(starts_with("mat")) %>% rowSums()
+            )
+data2 <- score2[,c("bac","annee","hist_note","eco_note","mat_note")]
+colnames(data2) <- c("Bac", "Annee", "Histoire", "Economie", "Maths")
+
+data2$Bac <- ordered(data2$Bac, levels=c("Bac ES","Bac S","Bac L","Bac STMG","Bac professionnel"))
+levels(data2$Bac) <- c("Bac ES", "Bac S","Autres","Autres","Autres")
+
+rep2_L1 <- data2 %>% filter(data2$Annee=="L1")
+rep2_L1_ES_S <- rep2_L1 %>% filter(rep2_L1$Bac=="Bac ES"|rep2_L1$Bac=="Bac S")
+rep2_L1_ES_S$Bac <- factor(rep2_L1_ES_S$Bac, exclude = NULL)
+
+rep2_L3 <- data2 %>% filter(data2$Annee=="L3")
+rep2_L3_ES_S <- rep2_L3 %>% filter(rep2_L3$Bac=="Bac ES"|rep2_L3$Bac=="Bac S")
+rep2_L3_ES_S$Bac <- factor(rep2_L3_ES_S$Bac, exclude = NULL)
+```
+
+
+```{r Les données des L1}
+rep_L1 <- data %>% filter(data$Annee=="L1") 
+rep_L1_ES_S <- rep_L1 %>% filter(rep_L1$Bac=="Bac ES"|rep_L1$Bac=="Bac S")
+rep_L1_ES_S$Bac <- factor(rep_L1_ES_S$Bac, exclude = NULL)
+```
+
+Dans la deuxième base de données nommée "rep_L1" nous avons isolé les étudiants de L1 et nous avons créé une autre base de données à partir de celle-ci que nous avons appelé "rep_L1_ES_S".
+
+Par souci de practicité, nous avons regroupé les élèves issus d'autres filières dans une catégorie "Autres"
+
+```{r Les données des L3}
+rep_L3 <- data %>% filter(data$Annee=="L3")
+rep_L3_ES_S <- rep_L3 %>% filter(rep_L3$Bac=="Bac ES"|rep_L3$Bac=="Bac S")
+rep_L3_ES_S$Bac <- factor(rep_L3_ES_S$Bac, exclude = NULL)
+```
+
+Nous avons suivi la même démarche pour les L3
+
+```{r Les données des L1 et L3}
+rep_L1_L3 <- data %>% filter(data$Annee!="L2")
+```
+
+Voici la base de données contenant les élèves de L1 et de L3 venant de S et de ES :
+
+```{r affichage de la base de données étudiée}
+df.aff(rep_L1_L3, nrow = 10, titre = "Données des L1 et des L3 à l'issue du QCM")
+```
+
+
+Dans cette base de données nommée "rep_L1_L3", il y a `r nrow(rep_L1_L3)` individus et `r ncol(rep_L1_L3)` variables : 
+
+- Les points obtenus en **Histoire**, **Economie** et **Maths** ;
+- 2 variables décrivant l'étudiant :
+  - L'année de Licence : **`r levels(rep_L1_L3$Annee)`**,
+  - La filière d'origine : **`r levels(rep_L1_L3$Bac)`**.
+
+Nous n'étudions pas les L2 car notre objectif est de mettre en avant une éventuelle progression des élèves grâce à la Licence d'Economie. C'est pourquoi nous comparons L1 et L3 qui sont les années extremales de la formation
+
+
+## Répartition des étudiants en Licence d'Eco
+
+Voici un premier graphique qui montre que les élèves venant de S et de ES sont majoritaires en L1 et en L3 (c'est aussi le cas en L2). 
+
+Ce graphique vient appuyer notre choix de ne considérer que les S et ES
+
+```{r Répartition par fillière}
+ggplot(rep_L1_L3) + aes(x = Annee, fill = Bac) +
+  geom_bar(width = 0.5) + labs(x = "Filière", y = "Effectif", 
+                               title = "Répartition des L1 et L3 selon la filière")
+```
+
+
+
+## Organisation de l'étude
+
+Notre réponse à la problématique s'articulera en deux parties, à savoir l'étude des résultats obtenus par les L1 puis ceux des L3. 
+
+Chaque partie comportera tableaux, graphiques et tests afin d'en tirer une réponse précise et éclairée. 
+
+# Les L1
+
+L'objectif de ces 3 sous-parties est de comparer le niveau de culture générale en Economie, Histoire et Maths des L1 venant de S et de ceux venant de ES à l'aide de tableaux, de graphiques et de tests.
+
+## Tableaux
+
+ 
+```{r Fonction calculant moyenne et écart-type}
+f <- function(x){
+  moy <- mean(x)
+  var <- sd(x)
+  matrix(c(moy,var))
+output <- c(moy,var)
+return(output)
+}
+```
+
+
+```{r Fonction calculant quartiles, médiane, min et max}
+g <- function(x){
+  min <- min(x)
+  Q1 <- quantile(x,0.25)
+  med <- median(x)
+  Q3 <- quantile(x,0.75)
+  max <- max(x)
+  output <- c(min, Q1, med, Q3, max)
+  return(output)
+}
+```
+
+```{r Création du Tableau1 des L1}
+tableau1_L1<-t(rbind(
+  sapply(rep_L1_ES_S[,c(-1,-2)] %>% filter(rep_L1_ES_S$Bac=="Bac ES"),FUN=f),
+  sapply(rep2_L1_ES_S[,c(-1,-2)] %>% filter(rep2_L1_ES_S$Bac=="Bac ES"),FUN=f),
+  sapply(rep_L1_ES_S[,c(-1,-2)] %>% filter(rep_L1_ES_S$Bac=="Bac S"),FUN=f),
+  sapply(rep2_L1_ES_S[,c(-1,-2)] %>% filter(rep2_L1_ES_S$Bac=="Bac S"),FUN=f)))
+
+rownames(tableau1_L1)<-c("Histoire","Economie","Maths")
+colnames(tableau1_L1)<-c("Moyenne","Variance","Moyenne","Variance",
+                      "Moyenne","Variance","Moyenne","Variance")
+
+tableau1_L1 %>% kable_1(titre = "Moyenne et variance selon le mode de pondération
+                        et la filière", font_size = 6)  %>% 
+  add_header_above(c(" "=1,"Avec pondération (note sur 20)"=2,
+                     "Sans pondération (note sur 10)"=2,
+                     "Avec pondération (note sur 20)"=2,
+                     "Sans pondération (note sur 10)"=2),line=T) %>%
+  add_header_above(c(" " =1,"Filière ES"=4,"Filière S"=4))
+
+```
+
+D'après ces résultats, nous pouvons conclure qu'il n'y a pas de grande différence entre les moyennes des notes pondérées ou non pondérées. Pour la suite de l'étude, nous utiliserons seulement les données avec notes pondérées.
+
+Pour ce qui en est des variances, il est tout à fait normal de trouver des différences entre données pondérées et non pondérées. En effet le fait d'avoir changer le score réduit ou augmente la dispersion des notes, c'est-à-dire les variances. 
+
+Nous sommes confrontés à des différences de moyenne dans toutes les matières. Les S obtenant globalement de meilleurs résultats. Cela infirme notre hypothèse. 
+
+Cependant, les notes sont moins dispersées en Histoire et en Economie pour les ES. Concernant les Maths, la variance associée au notes des S est moins élevée que celle associée des notes des ES. Leurs notes sont donc moins dispersées.
+
+
+```{r Création du Tableau2 des L1}
+
+tableau2_L1<-cbind(
+  sapply(rep_L1_ES_S[,c(-1,-2)] %>% filter(rep_L1_ES_S$Bac=="Bac ES"), FUN=g),
+  sapply(rep_L1_ES_S[,c(-1,-2)] %>% filter(rep_L1_ES_S$Bac=="Bac S"), FUN=g))
+
+colnames(tableau2_L1) <-c ("Histoire","Economie","Maths","Histoire","Economie","Maths")
+rownames(tableau2_L1) <-c ("Minimum","Q1","Mediane","Q3","Maximum")
+
+tableau2_L1 %>% kable_1(titre = "Tableau descriptif des notes selon la filière") %>% 
+  add_header_above(c(" "=1,"Filière ES"=3,"Filière S"=3))
+```
+
+les L1 venant de S ont une médiane et des quartiles plus élevés dans chaque matière, ce qui contredit nos hypothèses. 
+
+Néanmoins, remarquons que la meilleurs note obtenue en Histoire est issue d'un élève de ES.
+
+
+## Graphiques
+
+
+### Graphiques comparant la répartition des notes dans les matières considérées et selon la filière
+
+
+
+```{r, fig.height = 7, fig.width = 9}
+graph_L1_1 <- ggplot(rep_L1_ES_S) + aes(x = Histoire, fill = Bac) +
+  geom_histogram(bins = 15, alpha = 0.6, col = "white") +
+  labs(title = "Répartition des notes d'Histoire", y = "Effectif", x = "") + 
+  scale_x_continuous(breaks = seq(0,20,10)) +
+  scale_y_continuous(breaks = seq(0,14,2)) +
+  theme(plot.title = element_text(size = 10)) +
+  facet_wrap(rep_L1_ES_S$Bac)
+
+graph_L1_2 <- ggplot(rep_L1_ES_S) + aes(x = Economie, fill = Bac) +
+  geom_histogram(bins = 15, alpha = 0.6, col = "white") +
+  labs(title = "Répartition des notes d'Economie", y = "Effectif", x = "") +
+  scale_x_continuous(breaks = seq(0,20,5)) +
+  scale_y_continuous(breaks = seq(0,8,2)) +
+  theme(plot.title = element_text(size = 10)) +
+  facet_wrap(rep_L1_ES_S$Bac)
+
+graph_L1_3 <- ggplot(rep_L1_ES_S) + aes(x = Maths, fill = Bac) +
+  geom_histogram(bins = 15, alpha = 0.6, col = "white") +
+  labs(title = "Répartition des notes de Maths", y = "Effectif", x = "") +
+  scale_x_continuous(breaks = seq(0,20,10)) +
+  scale_y_continuous(breaks = seq(0,10,2)) +
+  theme(plot.title = element_text(size = 10)) +
+  facet_wrap(rep_L1_ES_S$Bac)
+
+ggarrange(graph_L1_1, graph_L1_2, graph_L1_3)
+```
+
+A l'aide de ces graphiques, nous n'observons pas de différence notable entre les L1 en fonction de la filière dont ils sont issus.
+
+Nous pouvons quand même observer que la répartition des effectifs "Bac S" tend plus vers la droite ce qui reviendrait à penser qu'ils sont meilleurs en Maths et en Economie.
+
+
+### Graphiques comparant les densités des notes dans les matières considérées et selon la filière
+
+
+```{r, fig.height = 7, fig.width = 9}
+graph_L1_4 <- ggplot(rep_L1_ES_S) + aes(x = Histoire, fill = Bac, col = Bac,
+                                    y = Bac) +
+  geom_density_ridges(alpha = 0.5, scale = 3) + labs(
+    title = "Densité des notes d'Histoire", x = "", y = "") +
+  scale_x_continuous(breaks = seq(0,20,5)) +
+  theme(plot.title = element_text(size = 10)) 
+  
+graph_L1_5 <- ggplot(rep_L1_ES_S) + aes(x = Economie, fill = Bac, col = Bac,
+                                    y = Bac) +
+  geom_density_ridges(alpha = 0.5, scale = 3) + labs(
+    title = "Densité des notes d'Economie", x = "", y = "") +
+  scale_x_continuous(breaks = seq(0,20,5)) +
+  theme(plot.title = element_text(size = 10)) 
+
+graph_L1_6 <- ggplot(rep_L1_ES_S) + aes(x = Maths, fill = Bac, col = Bac,
+                                    y = Bac) +
+  geom_density_ridges(alpha = 0.5, scale = 3) + labs(
+    title = "Densité des notes de Maths", x = "", y = "") +
+  scale_x_continuous(breaks = seq(0,20,5)) +
+  theme(plot.title = element_text(size = 10)) 
+
+ggarrange(graph_L1_4, graph_L1_5, graph_L1_6)
+```
+
+Ces trois graphiques nous donnent visuellement plus d'informations que les graphiques précédents. En effet, en supperposant les densités, on remarque que celles des "Bac S" sont globalement situées plus à droite que celle des "Bac ES".
+
+Nous pouvons ainsi conclure que les élèves issus de "Bac S" ont globalement un niveau meilleur dans les trois matières considérées.
+
+
+### Graphiques comparant la dispersion des notes dans les matières considérées et selon la filière
+
+
+```{r, fig.width = 9, fig.height = 6}
+graph_L1_7 <- ggplot(rep_L1_ES_S) + aes(x = Bac, y = Histoire, fill = Bac) +
+  geom_boxplot(alpha = 0.5, outlier.colour="red",
+               varwidth = TRUE) + coord_flip() +
+  labs(title = "Dispersion des notes d'Histoire", x = "", y = "") +
+  theme(plot.title = element_text(size = 10))
+  
+graph_L1_8 <- ggplot(rep_L1_ES_S) + aes(x = Bac, y = Economie, fill = Bac) +
+  geom_boxplot(alpha = 0.5, outlier.colour="red",
+               varwidth = TRUE) + coord_flip() +
+  labs(title = "Dispersion des notes d'Economie", x = "", y = "") +
+  theme(plot.title = element_text(size = 10)) 
+
+graph_L1_9 <- ggplot(rep_L1_ES_S) + aes(x = Bac, y = Maths, fill = Bac) +
+  geom_boxplot(alpha = 0.5, outlier.colour="red",
+               varwidth = TRUE) + coord_flip() +
+  labs(title = "Dispersion des notes de Maths", x = "", y = "") +
+  theme(plot.title = element_text(size = 10)) 
+  
+ggarrange(graph_L1_7, graph_L1_8, graph_L1_9)
+```
+
+Remarquons que ces boîtes à moustache nous permettent d'arriver aux mêmes conclusions que les trois graphiques précédents.
+
+Ajoutons que les médianes des S dans les trois matières sont plus élevées que celles des ES.
+
+
+En comparant les trois types de graphqiques, nous constatons que les boîtes à moustache révèlent plus d'informations au sujet de notre étude. 
+
+
+## Tests
+
+### Test de normalité
+
+Le but est de déterminer si les variables représentant les notes dans les 3 matières suivent des lois normales. 
+
+```{r Shapiro Test}
+norm_test <- function(x){
+  test1 <- shapiro.test(x)
+  output <- test1$p.value
+  return(output)
+}
+```
+
+
+```{r}
+rep_L1_ES_S %>% select("Histoire", "Economie", "Maths") %>% sapply(norm_test) %>%
+  kable_1(transp = TRUE, titre = "p-value du test de normalité ", center = TRUE)
+```
+
+On constate que la probabilité critique est significative pour la variable "Economie" car inférieure au risque de première espèce $\alpha$ = 5%. On peut rejeter l'hypothèse de normalité de cette variable.
+
+Cependant, les effectifs étant petits, on considère que les 3 variables pour les S et les ES suivent des lois normales. Nous prendrons des précautions dans nos conclusions de tests.
+
+```{r}
+tab_L1 <- matrix(c(table(rep_L1_ES_S$Bac), nrow(rep_L1_ES_S)),
+              ncol = 3, byrow = TRUE)
+colnames(tab_L1) <- c("Bac ES", "Bac S", "Total")
+
+tab_L1 %>% kable_1( titre = "Effectifs des L1")
+```
+
+
+### Tests de comparaison de moyennes
+
+En vue de répondre à nos hypothèses, on compare les moyennes des ES et des S dans les matières suivantes :
+
+* Mathématiques
+* Economie
+* Histoire 
+
+Pour ce faire, on utilise le **test de Student**.
+
+Par souci de simplicité, on se placera dans le cas où l'on compare les notes des ES aux notes des S.
+
+Le premier test est un **test unilatéral droit**, on souhaite tester si les notes obtenues par les ES en Histoire et en Economie sont meilleures que celles obtenues par les S.
+
+```{r Test de Student 1}
+test_Student_1<- function(x,y){
+  if (var.test(x~ y)$p.value < 0.05){
+    test2 <- t.test(x~ y, var.equal = FALSE, alternative = "greater")
+  } else {
+    test2 <- t.test(x~ y, var.equal = TRUE, alternative = "greater")
+  }
+   output <- c(test2$estimate, test2$p.value)
+   names(output) <- c("Moyenne Bac ES", "Moyenne Bac S", "p-value")
+   return(output)
+ }
+```
+
+```{r}
+test_Student_1.df <- function(df, y){
+  sapply(df, test_Student_1, y)
+}
+```
+
+```{r}
+rep_L1_ES_S %>% select("Histoire", "Economie") %>% 
+  test_Student_1.df(rep_L1_ES_S$Bac) %>% 
+  kable_1(titre = "Tableau des résultats du Test de Student unilatéral droit")
+```
+
+Pour les 3 notes, la probabilité critique n'est pas significative car elle ne nous permet pas de rejeter H0 au risque $\alpha$ = 5%.
+
+Les notes des ES en Histoire et en Economie ne sont pas supérieures aux notes des S.
+
+Les probabilités critiques étant élevées, nous allons tester si les notes des ES sont inférieures aux notes des S en Histoire et en Economie.
+
+
+```{r Test de Student 2}
+test_Student_2<- function(x,y){
+  if (var.test(x~ y)$p.value < 0.05){
+    test3 <- t.test(x~ y, var.equal = FALSE, alternative = "less")
+  } else {
+    test3 <- t.test(x~ y, var.equal = TRUE, alternative = "less")
+  }
+   output <- c(test3$estimate, test3$p.value)
+   names(output) <- c("Moyenne Bac ES", "Moyenne Bac S", "p-value")
+   return(output)
+ }
+```
+
+```{r}
+test_Student_2.df<- function(df, y){
+  sapply(df, test_Student_2, y)
+}
+```
+
+```{r}
+rep_L1_ES_S %>% select("Histoire", "Economie") %>% 
+  test_Student_2.df(rep_L1_ES_S$Bac) %>% kable_1(
+    titre = "Tableau des résultats du Test de Student unilatéral gauche")
+```
+
+Cette fois les probabilités critiques sont significatives, on peut rejeter H0 au risque 5%. Cela signifie que les notes des ES en Histoire et en Economie sont inférieures à celles des S.
+
+```{r}
+rep_L1_ES_S %>% select("Maths") %>% 
+  test_Student_2.df(rep_L1_ES_S$Bac) %>% kable_1(
+    titre = "Tableau des résultats du Test de Student unilatéral gauche")
+```
+
+Ici, la probabilité critique est significative ie on peut rejeter H0 au risque 5%. Les notes des ES en Maths sont significativement inférieures à celles des S. Autrement dit, les L1 venant de S ont eu de meilleurs résultats en maths que ceux venant de ES.
+
+
+
+### Test d'indépendance
+
+Le but est de déterminer si les notes obtenues dépendent de la filière. Plus précisément il s'agit de savoir si la note obtenue en Maths dépend du fait de venir de S et si les notes obtenues en Histoire et en Economie dépendent du fait de venir de ES.
+
+La méthode utilisée est **le test du $\chi^2$**
+
+```{r}
+test.chi2 <- function(x,y) {
+  test4 <- chisq.test(x,y)
+  output<-c(min(test4$expected), test4$p.value)
+  names(output)<-c("Eff. théo. min.", "p-value")
+  return(output)
+}
+```
+
+```{r Découpages des notes des L1 en 4 classes}
+Classes_Economie_L1_1 <- cut(rep_L1_ES_S$Economie,
+                    quantile(rep_L1_ES_S$Economie, probs = seq(0, 1, 0.25)),
+                    right = FALSE, include.lowest = TRUE)
+levels(Classes_Economie_L1_1) <- c("Entre 4 et 10", "Entre 10 et 14",
+                                   "Entre 14 et 16", "Entre 16 et 18")
+
+Classes_Histoire_L1_1 <- cut(rep_L1_ES_S$Histoire,
+                    quantile(rep_L1_ES_S$Histoire, probs = seq(0, 1, 0.25)),
+                    right = FALSE, include.lowest = TRUE)
+levels(Classes_Histoire_L1_1) <- c("Entre 4 et 10", "Entre 10 et 14",
+                                   "Entre 14 et 16", "Entre 16 et 18")
+
+Classes_Maths_L1_1 <- cut(rep_L1_ES_S$Maths,
+                    quantile(rep_L1_ES_S$Maths, probs = seq(0, 1, 0.25)),
+                    right = FALSE, include.lowest = TRUE)
+levels(Classes_Maths_L1_1) <- c("Entre 4 et 10", "Entre 10 et 14",
+                                "Entre 14 et 16", "Entre 16 et 18")
+```
+
+
+```{r}
+cbind(table(Classes_Economie_L1_1,rep_L1_ES_S$Bac),
+      table(Classes_Histoire_L1_1, rep_L1_ES_S$Bac),
+      table(Classes_Maths_L1_1, rep_L1_ES_S$Bac)) %>% 
+  kable_1(titre = "Quartiles des notes des S et des ES ") %>%
+  add_header_above(c("", "Economie"=2, "Histoire"=2, "Maths"=2))
+```
+
+```{r}
+tab_L1_1 <- rep_L1_ES_S %>% mutate(Classes_Economie_L1_1, Classes_Histoire_L1_1,
+                       Classes_Maths_L1_1) %>%
+  select("Classes_Economie_L1_1", "Classes_Histoire_L1_1",
+         "Classes_Maths_L1_1") 
+colnames(tab_L1_1) <- c("Economie", "Histoire", "Maths")
+
+tab_L1_1 %>% sapply(test.chi2, rep_L1_ES_S$Bac) %>% kable_1(
+    titre = "Effectifs théoriques minimums et p-values des
+    tests d'indépendance")
+```
+
+Pour la note d'Histoire, la probabilité critique est égale à $0.0505$ et est donc non significative. On ne peut donc pas rejeter l'hypothèse d'indépendance pour la variable histoire.
+
+Les effectifs théoriques minimums étant inférieurs à 5 pour les notes d'Economie et de maths, les conditions de validité du test du $\chi^2$ ne sont pas valables. 
+
+Pour résoudre ce problème de classes, on crée des classes avec une amplitude plus importante telles que dans le tableau comme suit :
+
+```{r Découpages des notes des L1 en 3 classes}
+Classes_Economie_L1_2 <- cut(rep_L1_ES_S$Economie,
+                    quantile(rep_L1_ES_S$Economie, probs = c(0,1/3,2/3,1)),
+                    right = FALSE, include.lowest = TRUE)
+levels(Classes_Economie_L1_2) <- c("Entre 4 et 12,7", "Entre 12,7 et 15",
+                                   "Entre 15 et 18")
+
+Classes_Histoire_L1_2 <- cut(rep_L1_ES_S$Histoire,
+                    quantile(rep_L1_ES_S$Histoire, probs = c(0,1/3,2/3,1)),
+                    right = FALSE, include.lowest = TRUE)
+levels(Classes_Histoire_L1_2) <- c("Entre 4 et 12,7", "Entre 12,7 et 15",
+                                   "Entre 15 et 18")
+
+Classes_Maths_L1_2 <- cut(rep_L1_ES_S$Maths,
+                    quantile(rep_L1_ES_S$Maths, probs = c(0,1/3,2/3,1)),
+                    right = FALSE, include.lowest = TRUE)
+levels(Classes_Maths_L1_2) <- c("Entre 4 et 12,7", "Entre 12,7 et 15",
+                                   "Entre 15 et 18")
+```
+
+```{r}
+cbind(table(Classes_Economie_L1_2,rep_L1_ES_S$Bac),
+      table(Classes_Histoire_L1_2, rep_L1_ES_S$Bac),
+      table(Classes_Maths_L1_2, rep_L1_ES_S$Bac)) %>% 
+  kable_1(titre = "Découpage des notes des S et des ES en 3 classes ") %>%
+  add_header_above(c("", "Economie"=2, "Histoire"=2, "Maths"=2))
+```
+
+```{r}
+tab_L1_2 <- rep_L1_ES_S %>% mutate(Classes_Economie_L1_2, Classes_Histoire_L1_2,
+                       Classes_Maths_L1_2) %>%
+  select("Classes_Economie_L1_2", "Classes_Histoire_L1_2",
+         "Classes_Maths_L1_2") 
+colnames(tab_L1_2) <- c("Ecnomie", "Histoire", "Maths")
+
+tab_L1_2 %>%  sapply(test.chi2, rep_L1_ES_S$Bac) %>% kable_1(
+    titre = "Effectifs théoriques minimums et p-values des
+    tests d'indépendance")
+```
+
+On constate que les effectifs théoriques minimums pour les 3 notes sont cette fois-ci supérieurs à 5. Les conditions de validité du test du $\chi^2$ étant respectées, on peut conclure quant à l'indépendance des notes vis-à-vis du Bac.
+
+Pour les notes d'Economie et de Maths, la p-value est significative car inférieure au risque de première espèce (5%). On peut donc rejeter l'hypothèse d'indépendance, ie les notes d'Economie et de Maths dépendent de la filière suivie au Lycée.
+
+A l'inverse pour les notes d'Histoire, on ne peut pas rejeter l'hypothèse d'indépendance car la p-value est supérieure à 5%.
+
+
+# Les L3
+
+L'objectif de ces 3 sous-parties est de mettre en avant une éventuelle évolution des notes obtenues en Economie, Histoire et Maths des L3 venant de S et de ceux venant de ES à l'aide de tableaux, de graphiques et de tests.
+
+
+## Tableaux
+
+```{r Création du Tableau1 des L3}
+tableau1_L3<-t(rbind(
+  sapply(rep_L3_ES_S[,c(-1,-2)] %>% filter(rep_L3_ES_S$Bac=="Bac ES"),FUN=f),
+  sapply(rep2_L3_ES_S[,c(-1,-2)] %>% filter(rep2_L3_ES_S$Bac=="Bac ES"),FUN=f),
+  sapply(rep_L3_ES_S[,c(-1,-2)] %>% filter(rep_L3_ES_S$Bac=="Bac S"),FUN=f),
+  sapply(rep2_L3_ES_S[,c(-1,-2)] %>% filter(rep2_L3_ES_S$Bac=="Bac S"),FUN=f)))
+
+rownames(tableau1_L3)<-c("Histoire","Economie","Maths")
+colnames(tableau1_L3)<-c("Moyenne","Variance","Moyenne","Variance",
+                      "Moyenne","Variance","Moyenne","Variance")
+
+tableau1_L3 %>% kable_1(titre = "Moyenne et variance selon le mode de pondération
+                        et la filière", font_size = 6) %>% 
+  add_header_above(c(" "=1,"Avec pondération (note sur 20)"=2,
+                     "Sans pondération (note sur 10"=2,
+                     "Avec pondération (note sur 20)"=2,
+                     "Sans pondération (note sur 10)"=2),line=T) %>%
+  add_header_above(c(" " =1,"Filière ES"=4,"Filière S"=4))
+```
+
+* Différences entre moyennes des notes pondérées ou non pondérées
+
+La conclusion est la même que les données de L1. Nous allons donc garder les données avec les notes pondérées.
+
+* Différences entre les filières S et ES pour les notes pondérées 
+
+Nous remarquons que l'écart de niveau entre ES et S s'est réduit en L3. Il est intéressant de relever une inversion des résultats obtenus en Histoire et en Economie. En effet, les moyennes des ES dans ces deux matières sont supérieures à celles des S.  
+
+Pour les Maths, les S dominent toujours malgré un rattrapage notable des ES.
+
+Les notes sont moins dispersées en ES pour les matières Histoire et Maths. En Economie, observons que les variances sont égales pour les deux filières.
+
+La différence de moyenne étant faible ($0,3$), nous pouvons dire qu'il y a une réelle convergence de niveau entre ES et S dans cette matière.
+
+```{r Création du Tableau2 des L3}
+
+tableau2_L3 <- cbind(
+  sapply(rep_L3_ES_S[,c(-1,-2)] %>% filter(rep_L3_ES_S$Bac=="Bac ES"), FUN=g),
+  sapply(rep_L3_ES_S[,c(-1,-2)] %>% filter(rep_L3_ES_S$Bac=="Bac S"), FUN=g))
+
+colnames(tableau2_L3) <-c ("Histoire","Economie","Maths","Histoire","Economie","Maths")
+rownames(tableau2_L3) <-c ("Minimum","Q1","Mediane","Q3","Maximum")
+
+tableau2_L3 %>% kable_1(titre = "Tableau descriptif des notes selon la filière") %>% 
+  add_header_above(c(" "=1,"Filière ES"=3,"Filière S"=3))
+```
+
+Pour l'Economie, il est pertinent de voir que minimums, quartiles et maximums sont identiques quelque soit la filière. Cela peut s'expliquer par le fait que l'enseignement de l'Economie a été profitable durant les trois années de licence. 
+
+Pour les Maths, nous avons toujours une différence dans les notes obtenues mais l'écart s'est amoindri. 
+
+## Graphiques
+
+
+### Graphiques comparant la répartition des notes dans les matières considérées et selon la filière
+
+```{r, fig.height = 7, fig.width = 9}
+graph_L3_1 <- ggplot(rep_L3_ES_S) + aes(x = Histoire, fill = Bac) +
+  geom_histogram(bins = 15, alpha = 0.6, col = "white") +
+  labs(title = "Répartition des notes d'Histoire", y = "Effectif", x = "") + 
+  scale_x_continuous(breaks = seq(0,20,10)) +
+  scale_y_continuous(breaks = seq(0,14,2)) +
+  theme(plot.title = element_text(size = 10)) +
+  facet_wrap(rep_L3_ES_S$Bac)
+
+graph_L3_2 <- ggplot(rep_L3_ES_S) + aes(x = Economie, fill = Bac) +
+  geom_histogram(bins = 15, alpha = 0.6, col = "white") +
+  labs(title = "Répartition des notes d'Economie", y = "Effectif", x = "") +
+  scale_x_continuous(breaks = seq(0,20,10)) +
+  scale_y_continuous(breaks = seq(0,8,2)) +
+  theme(plot.title = element_text(size = 10)) +
+  facet_wrap(rep_L3_ES_S$Bac)
+
+graph_L3_3 <- ggplot(rep_L3_ES_S) + aes(x = Maths, fill = Bac) +
+  geom_histogram(bins = 15, alpha = 0.6, col = "white") +
+  labs(title = "Répartition des notes de Maths", y = "Effectif", x = "") +
+  scale_x_continuous(breaks = seq(0,20,10)) +
+  scale_y_continuous(breaks = seq(0,10,2)) +
+  theme(plot.title = element_text(size = 10)) +
+  facet_wrap(rep_L3_ES_S$Bac)
+
+ggarrange(graph_L3_1, graph_L3_2, graph_L3_3)
+```
+
+Comme pour le cas des L1, nous remarquons que ce type de graphique ne nous donne pas d'information remarquable. 
+
+### Graphiques comparant la densité des notes dans les matières considérées et selon la filière
+
+```{r, fig.height = 7, fig.width = 9}
+graph_L3_4 <- ggplot(rep_L3_ES_S) + aes(x = Histoire, fill = Bac, col = Bac,
+                                    y = Bac) +
+  geom_density_ridges(alpha = 0.5, scale = 3) + labs(
+    title = "Densité des notes d'Histoire", x = "", y = "") +
+  scale_x_continuous(breaks = seq(0,20,5)) +
+  theme(plot.title = element_text(size = 10)) 
+
+graph_L3_5 <- ggplot(rep_L3_ES_S) + aes(x = Economie, fill = Bac, col = Bac,
+                                    y = Bac) +
+  geom_density_ridges(alpha = 0.5, scale = 3) + labs(
+    title = "Densité des notes d'Economie", x = "", y = "") +
+  scale_x_continuous(breaks = seq(0,20,5)) +
+  theme(plot.title = element_text(size = 10))
+
+graph_L3_6 <- ggplot(rep_L3_ES_S) + aes(x = Maths, fill = Bac, col = Bac,
+                                    y = Bac) +
+  geom_density_ridges(alpha = 0.5, scale = 3) + labs(
+    title = "Densité des notes de Maths", x = "", y = "") +
+  scale_x_continuous(breaks = seq(0,20,5)) +
+  theme(plot.title = element_text(size = 10))
+
+ggarrange(graph_L3_4, graph_L3_5, graph_L3_6)
+```
+
+Globalement, les moyennes dans les trois matières sont proches malgré des dispersions différentes en Histoire et en Maths.
+
+En Economie, les densités pour les élèves venant de S et de ES sont similaires. 
+
+
+### Graphiques comparant la dispersion des notes dans les matières considérées et selon la filière
+
+```{r, fig.width = 9, fig.height = 6}
+graph_L3_7 <- ggplot(rep_L3_ES_S) + aes(x = Bac, y = Histoire, fill = Bac) +
+  geom_boxplot(alpha = 0.5, outlier.colour="red",
+               varwidth = TRUE) + coord_flip() +
+  labs(title = "Dispersion des notes d'Histoire", x = "", y = "") +
+  theme(plot.title = element_text(size = 10)) 
+
+graph_L3_8 <- ggplot(rep_L3_ES_S) + aes(x = Bac, y = Economie, fill = Bac) +
+  geom_boxplot(alpha = 0.5, outlier.colour="red",
+               varwidth = TRUE) + coord_flip() +
+  labs(title = "Dispersion des notes d'Economie", x = "", y = "") +
+  theme(plot.title = element_text(size = 10)) 
+
+graph_L3_9 <- ggplot(rep_L3_ES_S) + aes(x = Bac, y = Maths, fill = Bac) +
+  geom_boxplot(alpha = 0.5, outlier.colour="red",
+               varwidth = TRUE) +
+  labs(title = "Dispersion des notes de Maths", x = "", y = "") +
+  coord_flip() +
+  theme(plot.title = element_text(size = 10)) 
+
+ggarrange(graph_L3_7, graph_L3_8, graph_L3_9)
+```
+
+Encore une fois les graphiques de type boîte à moustache nous offrent des informations plus frappantes.
+
+Les conclusions des graphiques précédents sont confirmées. 
+
+Toutefois, les médianes pour les variables "Histoire" et "Economie" sont plus élevées chez les L3 venant de ES que celle des L3 venant de S. A l'inverse, la médiane pour la variable "Maths" des S est meilleure que celle des ES. Bien qu'il s'agisse des L3, nous avons ici un lien avec nos hypothèses quant au niveau des L1. 
+
+## Tests
+
+
+### Tests de normalité
+
+
+```{r}
+rep_L3_ES_S %>% select("Histoire", "Economie", "Maths") %>% sapply(norm_test) %>%
+  kable_1(transp = TRUE, titre = "p-value du test de normalité ")
+```
+
+Pour les notes d'Histoire et de Maths, les p-value ne sont pas significatives car supérieures au risque de première espèce $\alpha$ = 5%.
+
+On ne peut donc pas rejeter l'hypothèse de normalité. Il est significatif de dire que les variables Histoire et Maths suivent des lois normales.
+
+Pour la variable Economie la p-value est significative car inférieure à 5%.
+
+On peut donc rejeter l'hypothèse de normalité pour cette variable. Cependant les effectifs étant petits, il n'est pas faux de considérer que les variables associées aux notes d'Histoire, d'Economie et de maths suivent des lois normales. Comme pour les L1, nous prendrons des précautions dans nos conclusions. 
+
+```{r}
+tab_L3 <- matrix(c(table(rep_L3_ES_S$Bac), nrow(rep_L3_ES_S)),
+              ncol = 3, byrow = TRUE)
+colnames(tab_L3) <- c("Bac ES", "Bac S", "Total")
+
+tab_L3 %>% kable_1( titre = "Effectifs des L3")
+```
+
+
+### Tests de comparaison 
+
+Nous effectuons un **test bilatéral** au risque $\alpha$ = 5% afin de vérifier que le moyennes des élèves de L3 venant de S et de ES ne présentent pas de différence significative.
+
+```{r Test de Student 3}
+test_Student_3<- function(x,y){
+  if (var.test(x~ y)$p.value < 0.05){
+    test2 <- t.test(x~ y, var.equal = FALSE, alternative = "two.sided")
+  } else {
+    test2 <- t.test(x~ y, var.equal = TRUE, alternative = "two.sided")
+  }
+   output <- c(test2$estimate, test2$p.value)
+   names(output) <- c("Moyenne Bac ES", "Moyenne Bac S", "p-value")
+   return(output)
+ }
+```
+
+```{r}
+test_Student_3.df<- function(df, y){
+  sapply(df, test_Student_3, y)
+}
+```
+
+```{r}
+rep_L3_ES_S %>% select("Histoire", "Economie", "Maths") %>% 
+  test_Student_3.df(rep_L3_ES_S$Bac) %>% kable_1(
+    titre = "Tableau des résultats du Test de Student de supériorité")
+```
+
+Pour les 3 variables associées aux notes d'Histoire, d'Economie et de Maths la p-value est non significative car supérieure à $\alpha$ = 5%. On ne peut donc pas rejeter l'hypothèse d'égalité des moyennes.
+
+Ce test vient de montrer qu'en L3, les notes des élèves venant de S et de ES ne sont pas significativement différentes. 
+
+Ce test confirme donc note hypothèse d'harmonisation des niveaux après 3 années de Licence d'Economie. 
+
+
+### Test d'indépendance 
+
+
+```{r Découpages des notes de L3 en 4 classes}
+Classes_Economie_L3_1 <- cut(rep_L3_ES_S$Economie,
+                    quantile(rep_L3_ES_S$Economie, probs = seq(0, 1, 0.25)),
+                    right = FALSE, include.lowest = TRUE)
+levels(Classes_Economie_L3_1) <- c("Entre 7 et 13", "Entre 13 et 16,5",
+                                   "Entre 16,5 et 17", "Entre 17 et 20")
+
+Classes_Histoire_L3_1 <- cut(rep_L3_ES_S$Histoire,
+                    quantile(rep_L3_ES_S$Histoire, probs = seq(0, 1, 0.25)),
+                    right = FALSE, include.lowest = TRUE)
+levels(Classes_Histoire_L3_1) <- c("Entre 7 et 13", "Entre 13 et 16,5",
+                                   "Entre 16,5 et 17", "Entre 17 et 20")
+
+Classes_Maths_L3_1 <- cut(rep_L3_ES_S$Maths,
+                    quantile(rep_L3_ES_S$Maths, probs = seq(0, 1, 0.25)),
+                    right = FALSE, include.lowest = TRUE)
+levels(Classes_Maths_L3_1) <- c("Entre 7 et 13", "Entre 13 et 16,5",
+                                   "Entre 16,5 et 17", "Entre 17 et 20")
+```
+
+```{r}
+cbind(table(Classes_Economie_L3_1,rep_L3_ES_S$Bac),
+      table(Classes_Histoire_L3_1, rep_L3_ES_S$Bac),
+      table(Classes_Maths_L3_1, rep_L3_ES_S$Bac)) %>% kable_1(
+        titre = "Quartiles des notes des S et des ES ") %>%
+  add_header_above(c("", "Economie"=2, "Histoire"=2, "Maths"=2))
+```
+
+```{r}
+tab_L3_1 <- rep_L3_ES_S %>% mutate(Classes_Economie_L3_1, Classes_Histoire_L3_1,
+                       Classes_Maths_L3_1) %>%
+  select("Classes_Economie_L3_1", "Classes_Histoire_L3_1",
+         "Classes_Maths_L3_1")
+colnames(tab_L3_1) <- c("Economie", "Histoire", "Maths")
+
+tab_L3_1 %>% sapply(test.chi2, rep_L3_ES_S$Bac) %>% kable_1(
+    titre = "Effectifs théoriques minimums et p-values des
+    tests d'indépendance")
+```
+
+Dans ce cas, les conditions de validité du test du $\chi^2$ ne sont pas respectées car les effectifs théoriques minimums sont inférieurs à 5 pour les classes des 3 matières.
+
+Nous allons créer des classes avec une amplitude plus grande afin d'obtenir des effectifs théoriques supérieurs à 5. Un découpage des notes en 3 classes nous amène au même problème. C'est pourquoi nous découpons nos notes en 2 classes, comme suit :
+
+```{r Découpages des notes de L3 en 2 classes}
+Classes_Economie_L3_2 <- cut(rep_L3_ES_S$Economie,
+                    quantile(rep_L3_ES_S$Economie, probs = seq(0,1,0.5)),
+                    right = FALSE, include.lowest = TRUE)
+levels(Classes_Economie_L3_2) <- c("Entre 7 et 16,5", "Entre 16,5 et 20")
+
+Classes_Histoire_L3_2 <- cut(rep_L3_ES_S$Histoire,
+                    quantile(rep_L3_ES_S$Histoire, probs = seq(0,1,0.5)),
+                    right = FALSE, include.lowest = TRUE)
+levels(Classes_Histoire_L3_2) <- c("Entre 7 et 16,5", "Entre 16,5 et 20")
+
+Classes_Maths_L3_2 <- cut(rep_L3_ES_S$Maths,
+                    quantile(rep_L3_ES_S$Maths, probs = seq(0,1,0.5)),
+                    right = FALSE, include.lowest = TRUE)
+levels(Classes_Maths_L3_2) <- c("Entre 7 et 16,5", "Entre 16,5 et 20")
+```
+
+
+```{r}
+cbind(table(Classes_Economie_L3_2,rep_L3_ES_S$Bac),
+      table(Classes_Histoire_L3_2, rep_L3_ES_S$Bac),
+      table(Classes_Maths_L3_2, rep_L3_ES_S$Bac)) %>% kable_1(
+        titre = "Découpage des notes des S et des ES en 2 classes ") %>%
+  add_header_above(c("", "Economie"=2, "Histoire"=2, "Maths"=2))
+```
+
+
+```{r}
+tab_L3_2 <- rep_L3_ES_S %>% mutate(Classes_Economie_L3_2, Classes_Histoire_L3_2,
+                       Classes_Maths_L3_2) %>%
+  select("Classes_Economie_L3_2", "Classes_Histoire_L3_2",
+         "Classes_Maths_L3_2")
+colnames(tab_L3_2) <- c("Economie", "Histoire", "Maths")
+
+tab_L3_2 %>% sapply(test.chi2, rep_L3_ES_S$Bac) %>% kable_1(
+    titre = "Effectifs théoriques minimums et p-values des
+    tests d'indépendance")
+```
+
+Les classes des 3 matières présentent des effectifs mimimums strictement supérieurs à 5, les conditions de validité du test sont vérifiées. 
+
+On constate que pour chaque variable, la p-value est non significative car supérieure à 5%. On ne peut donc pas rejeter l'hypothèse d'indépendance.
+
+Ainsi, en L3 il n'y a plus de lien de causalité entre les notes obtenues en Histoire, Economie et Maths et le Bac. Cela confirme aussi notre 3ème hypothèse, à savoir que la Licence d'Economie permet d'homogénéiser le niveau des étudiants, qu'ils viennent de S ou de ES. 
+
+
+# Conclusion
+
+
+Il est avant tout essentiel de nuancer nos résultats car nous avons supposé que les variables associées suivaient des lois normales.
+
+Après observation et analyse des résultats, nous pouvons rejeter l'hypothèse stipulant que les étudiants venant de ES obtiennent de meilleurs résultats au QCM en Histoire et en Economie.
+
+Nous remarquons néanmoins que les S obtiennent de meilleurs résultats dans les 3 matières étudiées, ce qui confirme notre hypothèse énonçant que les étudiants venant de S sont meilleurs en Maths en L1.
+
+Pour les L3, les tests effectués montrent qu'il n'y a pas de différence significative dans les résultats obtenus en Histoire, Economie et Mathématiques. Cela nous amène à confirmer l'hypothèse selon laquelle **la licence d'Economie a permis d'harmoniser les niveaux des étudiants venant de ES et de S**.  
